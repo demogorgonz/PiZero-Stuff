@@ -1,0 +1,7 @@
+#!/bin/bash
+#Location of git hooks is inside the project's folder .git/hooks
+
+
+date=$(date)
+tweet Git Push is made on MyProject on $date
+
