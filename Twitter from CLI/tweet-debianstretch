@@ -1,0 +1,66 @@
+#!/bin/bash
+
+#  tweet.sh
+#     __
+#    <- )
+#    /( \
+#    \_\_>
+#    " "
+
+
+set -o errexit
+DEBUG="off"
+
+status="$*"
+consumer_key=""
+consumer_secret=""
+oauth_token=""
+oauth_secret=""
+
+timestamp=$(date +%s)
+nonce=$(date +%s%T | openssl base64 | sed -e s'/[+=/]//g')
+
+urlencode () {
+        i="$@"
+        i=${i//%/%25}  ; i=${i//' '/%20} ; i=${i//\~/%7E} ; i=${i//!/%21}  ; i=${i//\"/%22}  ; i=${i//#/%23}
+        i=${i//\$/%24} ; i=${i//\&/%26}  ; i=${i//\'/%27} ; i=${i//(/%28}  ; i=${i//)/%29}   ; i=${i//\*/%2A}
+        i=${i//+/%2B}  ; i=${i//,/%2C}   ; i=${i//-/-}    ; i=${i//\./.}   ; i=${i//\//%2F}  ; i=${i//:/%3A}
+        i=${i//;/%3B}  ; i=${i//</%3C}   ; i=${i//=/%3D}  ; i=${i//>/%3E}  ; i=${i//\?/%3F}  ; i=${i//@/%40}
+        i=${i//\[/%5B} ; i=${i//\\/%5C}  ; i=${i//\]/%5D} ; i=${i//\^/%5E} ; i=${i//_/_}     ; i=${i//\`/%60}
+        i=${i//\{/%7B} ; i=${i//|/%7C}   ; i=${i//\}/%7D}
+        echo "$i"
+}
+
+if [ $(echo "${status}" | wc -c) -gt 140 ]; then
+	echo "[ERROR] Status > 140!" && exit 1
+elif [ "${status}" == "" ]; then
+	echo "[ERROR] Status <= 0!" && exit 1
+fi
+
+echo "[+] Encoding status"
+encoded_status=$(urlencode ${status})
+
+echo "[+] Building signature"
+signature_base_string="POST&https%3A%2F%2Fapi.twitter.com%2F1.1%2Fstatuses%2Fupdate.json&oauth_consumer_key%3D${consumer_key}%26oauth_nonce%3D${nonce}%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D${timestamp}%26oauth_token%3D${oauth_token}%26oauth_version%3D1.0%26status%3D`urlencode ${encoded_status}`"
+
+echo "[+] Encoding signature"
+oauth_signature=$(echo -n ${signature_base_string} | openssl dgst -sha1 -hmac "${consumer_secret}&${oauth_secret}" -binary | openssl base64 | sed -e s'/+/%2B/' -e s'/\//%2F/' -e s'/=/%3D/')
+
+echo "[+] Building header"
+header="Authorization: OAuth oauth_consumer_key=\"${consumer_key}\", oauth_nonce=\"${nonce}\", oauth_signature=\"${oauth_signature}\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"${timestamp}\", oauth_token=\"${oauth_token}\", oauth_version=\"1.0\""
+
+echo "[+] Posting request"
+response=$(curl -sS --request 'POST' 'https://api.twitter.com/1.1/statuses/update.json' --data "status=${encoded_status}" --header "${header}")
+
+if [ $(echo "${response}" | grep "errors" | wc -l) -gt 0 ]; then
+    echo "[ERROR] Unsuccess: ${response}"
+else
+    echo "[+] Success!"
+fi
+
+#debug
+if [ "$DEBUG" == "on" ]; then
+    echo "[DEBUG] signature: ${signature_base_string}"
+    echo "[DEBUG] header: ${header}"
+    echo "[DEBUG] response: ${response}"
+fi
